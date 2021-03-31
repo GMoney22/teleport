@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/gravitational/teleport"
+	"github.com/gravitational/teleport/api/types"
 	"github.com/gravitational/teleport/lib/auth"
 	"github.com/gravitational/teleport/lib/client"
 	"github.com/gravitational/teleport/lib/defaults"
@@ -63,6 +64,7 @@ type ResourceCommand struct {
 	getCmd    *kingpin.CmdClause
 	createCmd *kingpin.CmdClause
 	updateCmd *kingpin.CmdClause
+	watchCmd  *kingpin.CmdClause
 
 	CreateHandlers map[ResourceKind]ResourceCreateHandler
 }
@@ -120,6 +122,8 @@ func (rc *ResourceCommand) Initialize(app *kingpin.Application, config *service.
 
 	rc.getCmd.Alias(getHelp)
 
+	rc.watchCmd = app.Command("watch", "Watch a resource for changes")
+	rc.watchCmd.Arg("resources", "The resources to watch").Required().SetValue(&rc.refs)
 }
 
 // TryRun takes the CLI command as an argument (like "auth gen") and executes it
@@ -138,6 +142,8 @@ func (rc *ResourceCommand) TryRun(cmd string, client auth.ClientI) (match bool, 
 		// tctl update
 	case rc.updateCmd.FullCommand():
 		err = rc.Update(client)
+	case rc.watchCmd.FullCommand():
+		err = rc.Watch(client)
 	default:
 		return false, nil
 	}
@@ -180,6 +186,41 @@ func (rc *ResourceCommand) Get(client auth.ClientI) error {
 		return writeJSON(collection, os.Stdout)
 	}
 	return trace.BadParameter("unsupported format")
+}
+
+func (rc *ResourceCommand) Watch(client auth.ClientI) error {
+	var kinds []types.WatchKind
+	for _, ref := range rc.refs {
+		kinds = append(kinds, types.WatchKind{
+			Kind:    ref.Kind,
+			SubKind: ref.SubKind,
+			Name:    ref.Name,
+		})
+	}
+
+	watcher, err := client.NewWatcher(context.TODO(), types.Watch{
+		Name:  "tctl",
+		Kinds: kinds,
+	})
+	if err != nil {
+		return trace.Wrap(err)
+	}
+
+	for {
+		select {
+		case event := <-watcher.Events():
+			if event.Type == types.OpInit {
+				continue
+			}
+			kind := event.Resource.GetKind()
+			if sk := event.Resource.GetSubKind(); sk != "" {
+				kind = fmt.Sprintf("%s/%s", kind, sk)
+			}
+			fmt.Printf("%s: %s/%s\n", event.Type, kind, event.Resource.GetName())
+		case <-watcher.Done():
+			return watcher.Error()
+		}
+	}
 }
 
 func (rc *ResourceCommand) GetMany(client auth.ClientI) error {
