@@ -32,6 +32,13 @@ int UACC_UTMP_READ_ERROR = 3;
 int UACC_UTMP_FAILED_OPEN = 4;
 int UACC_UTMP_ENTRY_DOES_NOT_EXIST = 5;
 int UACC_UTMP_FAILED_TO_SELECT_FILE = 6;
+int UACC_UTMP_PATH_PREFIX_UNREADABLE = 7;
+int UACC_UTMP_OTHER_ERROR = 8;
+int UACC_UTMP_INPUT_PATH_NULL = 9;
+int UACC_UTMP_TOO_MANY_SYMLINKS = 10;
+int UACC_UTMP_INPUT_PATH_TOO_LONG = 11;
+int UACC_UTMP_PATH_DOES_NOT_EXIST = 12;
+int UACC_UTMP_PATH_CONTAINS_NO_DIR_COMP = 13;
 
 // I initially attempted to use the login/logout BSD functions but ran into a string of unexpected behaviours such as
 // errno being set to undocument values along with wierd return values in certain cases. They also modify the utmp database
@@ -59,6 +66,31 @@ static char* get_absolute_path_with_fallback(char* buffer, const char* supplied_
     return realpath(path, buffer);
 }
 
+static int check_abs_path_err(const char* buffer) {
+    // check for errors
+    if (buffer == NULL) {
+        switch errno {
+            case EACCES: return UACC_UTMP_MISSING_PERMISSIONS;
+            case EINVAL: return UACC_UTMP_INPUT_PATH_NULL;
+            case EIO: return UACC_UTMP_READ_ERROR;
+            case ELOOP: return UACC_UTMP_TOO_MANY_SYMLINKS:
+            case ENAMETOOLONG: return UACC_UTMP_INPUT_PATH_TOO_LONG;
+            case ENOENT: return UACC_UTMP_PATH_DOES_NOT_EXIST;
+            case ENITDUR: return UACC_UTMP_PATH_CONTAINS_NO_DIR_COMP;
+            default: return UACC_UTMP_OTHER_ERROR;
+        }
+    }
+
+    // check for GNU extension errors
+    if (errno == EACCES || errno == ENOENT) {
+        errno = 0;
+        return UACC_UTMP_PATH_PREFIX_UNREADABLE;
+    }
+
+    // no error was found
+    return 0;
+}
+
 // Allow the Go side to read errno.
 static int get_errno() {
     return errno;
@@ -74,6 +106,10 @@ static int max_len_tty_name() {
 static int uacc_add_utmp_entry(const char *utmp_path, const char *wtmp_path, const char *username, const char *hostname, const int32_t remote_addr_v6[4], const char *tty_name, const char *id, int32_t tv_sec, int32_t tv_usec) {
     char resolved_utmp_buffer[PATH_MAX];
     const char* file = get_absolute_path_with_fallback(&resolved_utmp_buffer[0], utmp_path, _PATH_UTMP);
+    int status = check_abs_path_err(file);
+    if (status != 0) {
+        return status;
+    }
     if (utmpname(file) < 0) {
         return UACC_UTMP_FAILED_TO_SELECT_FILE;
     }
@@ -100,6 +136,10 @@ static int uacc_add_utmp_entry(const char *utmp_path, const char *wtmp_path, con
     endutent();
     char resolved_wtmp_buffer[PATH_MAX];
     const char* wtmp_file = get_absolute_path_with_fallback(&resolved_wtmp_buffer[0], wtmp_path, _PATH_WTMP);
+    status = check_abs_path_err(wtmp_file);
+    if (status != 0) {
+        return status;
+    }
     updwtmp(wtmp_file, &entry);
     return 0;
 }
@@ -109,6 +149,10 @@ static int uacc_add_utmp_entry(const char *utmp_path, const char *wtmp_path, con
 static int uacc_mark_utmp_entry_dead(const char *utmp_path, const char *wtmp_path, const char *tty_name, int32_t tv_sec, int32_t tv_usec) {
     char resolved_utmp_buffer[PATH_MAX];
     const char* file = get_absolute_path_with_fallback(&resolved_utmp_buffer[0], utmp_path, _PATH_UTMP);
+    int status = check_abs_path_err(file);
+    if (status != 0) {
+        return status;
+    }
     if (utmpname(file) < 0) {
         return UACC_UTMP_FAILED_TO_SELECT_FILE;
     }
@@ -145,6 +189,10 @@ static int uacc_mark_utmp_entry_dead(const char *utmp_path, const char *wtmp_pat
     endutent();
     char resolved_wtmp_buffer[PATH_MAX];
     const char* wtmp_file = get_absolute_path_with_fallback(&resolved_wtmp_buffer[0], wtmp_path, _PATH_WTMP);
+    status = check_abs_path_err(wtmp_file);
+    if (status != 0) {
+        return status;
+    }
     updwtmp(wtmp_file, &log_entry);
     return 0;
 }
@@ -154,6 +202,10 @@ static int uacc_mark_utmp_entry_dead(const char *utmp_path, const char *wtmp_pat
 static int uacc_has_entry_with_user(const char *utmp_path, const char *user) {
     char resolved_utmp_buffer[PATH_MAX];
     const char* file = get_absolute_path_with_fallback(&resolved_utmp_buffer[0], utmp_path, _PATH_UTMP);
+    int status = check_abs_path_err(file);
+    if (status != 0) {
+        return status;
+    }
     if (utmpname(file) < 0) {
         return UACC_UTMP_FAILED_TO_SELECT_FILE;
     }

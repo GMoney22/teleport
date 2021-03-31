@@ -50,6 +50,7 @@ const nameMaxLen = 255
 // `remoteAddrV6`: IPv6 address of the remote host.
 // `ttyName`: Name of the TTY including the `/dev/` prefix.
 func Open(utmpPath, wtmpPath string, username, hostname string, remote [4]int32, tty *os.File) error {
+	// possible cause
 	ttyName, err := os.Readlink(tty.Name())
 	if err != nil {
 		return trace.Errorf("failed to resolve soft proc tty link: %v", err)
@@ -124,6 +125,7 @@ func Open(utmpPath, wtmpPath string, username, hostname string, remote [4]int32,
 //
 // The `ttyName` parameter must be the name of the TTY including the `/dev/` prefix.
 func Close(utmpPath, wtmpPath string, tty *os.File) error {
+	// possible cause
 	ttyName, err := os.Readlink(tty.Name())
 	if err != nil {
 		return trace.Errorf("failed to resolve soft proc tty link: %v", err)
