@@ -73,7 +73,7 @@ static int check_abs_path_err(const char* buffer) {
             case EACCES: return UACC_UTMP_MISSING_PERMISSIONS;
             case EINVAL: return UACC_UTMP_INPUT_PATH_NULL;
             case EIO: return UACC_UTMP_READ_ERROR;
-            case ELOOP: return UACC_UTMP_TOO_MANY_SYMLINKS:
+            case ELOOP: return UACC_UTMP_TOO_MANY_SYMLINKS;
             case ENAMETOOLONG: return UACC_UTMP_INPUT_PATH_TOO_LONG;
             case ENOENT: return UACC_UTMP_PATH_DOES_NOT_EXIST;
             case ENOTDIR: return UACC_UTMP_PATH_CONTAINS_NO_DIR_COMP;
